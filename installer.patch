@@ -1,0 +1,127 @@
+
+# HG changeset patch
+# User Masatoshi Kimura <VYV03354@nifty.ne.jp>
+# Date 1688579471 0
+# Node ID f8db4b5e5d95d825a4a714f07e088b2d6b038489
+# Parent  638a4cd92a7229797ac45f9f89e03f5ac2a5f332
+Bug 1836874 - Prevent installers from installing Firefox 116+ on Windows 7/8/8.1. r=mhowell
+
+Differential Revision: https://phabricator.services.mozilla.com/D180029
+
+diff --git a/browser/installer/windows/nsis/defines.nsi.in b/browser/installer/windows/nsis/defines.nsi.in
+--- a/browser/installer/windows/nsis/defines.nsi.in
++++ b/browser/installer/windows/nsis/defines.nsi.in
+@@ -93,20 +93,20 @@
+ # the x86 registry keys (e.g. the uninstall registry key).
+ #ifdef HAVE_64BIT_BUILD
+ !define HAVE_64BIT_BUILD
+ #ifdef _ARM64_
+ !define ARCH "AArch64"
+ !define MinSupportedVer "Microsoft Windows 10 for ARM"
+ #else
+ !define ARCH "x64"
+-!define MinSupportedVer "Microsoft Windows 7 x64"
++!define MinSupportedVer "Microsoft Windows 10 x64"
+ #endif
+ #else
+-!define MinSupportedVer "Microsoft Windows 7"
++!define MinSupportedVer "Microsoft Windows 10"
+ !define ARCH "x86"
+ #endif
+ 
+ !define MinSupportedCPU "SSE2"
+ 
+ #ifdef MOZ_MAINTENANCE_SERVICE
+ !define MOZ_MAINTENANCE_SERVICE
+ #endif
+diff --git a/browser/installer/windows/nsis/installer.nsi b/browser/installer/windows/nsis/installer.nsi
+--- a/browser/installer/windows/nsis/installer.nsi
++++ b/browser/installer/windows/nsis/installer.nsi
+@@ -1835,18 +1835,18 @@ Function .onInit
+   StrCpy $LANGUAGE 0
+   ${SetBrandNameVars} "$EXEDIR\core\distribution\setup.ini"
+ 
+   ; Don't install on systems that don't support SSE2. The parameter value of
+   ; 10 is for PF_XMMI64_INSTRUCTIONS_AVAILABLE which will check whether the
+   ; SSE2 instruction set is available. Result returned in $R7.
+   System::Call "kernel32::IsProcessorFeaturePresent(i 10)i .R7"
+ 
+-  ; Windows NT 6.0 (Vista/Server 2008) and lower are not supported.
+-  ${Unless} ${AtLeastWin7}
++  ; Windows 8.1/Server 2012 R2 and lower are not supported.
++  ${Unless} ${AtLeastWin10}
+     ${If} "$R7" == "0"
+       strCpy $R7 "$(WARN_MIN_SUPPORTED_OSVER_CPU_MSG)"
+     ${Else}
+       strCpy $R7 "$(WARN_MIN_SUPPORTED_OSVER_MSG)"
+     ${EndIf}
+     MessageBox MB_OKCANCEL|MB_ICONSTOP "$R7" IDCANCEL +2
+     ExecShell "open" "${URLSystemRequirements}"
+     Quit
+@@ -1857,17 +1857,16 @@ Function .onInit
+     MessageBox MB_OKCANCEL|MB_ICONSTOP "$(WARN_MIN_SUPPORTED_CPU_MSG)" IDCANCEL +2
+     ExecShell "open" "${URLSystemRequirements}"
+     Quit
+   ${EndIf}
+ 
+ !ifdef HAVE_64BIT_BUILD
+   ${If} "${ARCH}" == "AArch64"
+     ${IfNot} ${IsNativeARM64}
+-    ${OrIfNot} ${AtLeastWin10}
+       MessageBox MB_OKCANCEL|MB_ICONSTOP "$(WARN_MIN_SUPPORTED_OSVER_MSG)" IDCANCEL +2
+       ExecShell "open" "${URLSystemRequirements}"
+       Quit
+     ${EndIf}
+   ${ElseIfNot} ${RunningX64}
+     MessageBox MB_OKCANCEL|MB_ICONSTOP "$(WARN_MIN_SUPPORTED_OSVER_MSG)" IDCANCEL +2
+     ExecShell "open" "${URLSystemRequirements}"
+     Quit
+diff --git a/browser/installer/windows/nsis/stub.nsi b/browser/installer/windows/nsis/stub.nsi
+--- a/browser/installer/windows/nsis/stub.nsi
++++ b/browser/installer/windows/nsis/stub.nsi
+@@ -290,18 +290,18 @@ Function .onInit
+   ; isn't supported for the stub installer.
+   ${SetBrandNameVars} "$PLUGINSDIR\ignored.ini"
+ 
+   ; Don't install on systems that don't support SSE2. The parameter value of
+   ; 10 is for PF_XMMI64_INSTRUCTIONS_AVAILABLE which will check whether the
+   ; SSE2 instruction set is available.
+   System::Call "kernel32::IsProcessorFeaturePresent(i 10)i .R7"
+ 
+-  ; Windows NT 6.0 (Vista/Server 2008) and lower are not supported.
+-  ${Unless} ${AtLeastWin7}
++  ; Windows 8.1/Server 2012 R2 and lower are not supported.
++  ${Unless} ${AtLeastWin10}
+     ${If} "$R7" == "0"
+       strCpy $R7 "$(WARN_MIN_SUPPORTED_OSVER_CPU_MSG)"
+     ${Else}
+       strCpy $R7 "$(WARN_MIN_SUPPORTED_OSVER_MSG)"
+     ${EndIf}
+     MessageBox MB_OKCANCEL|MB_ICONSTOP "$R7" IDCANCEL +2
+     ExecShell "open" "${URLSystemRequirements}"
+     Quit
+diff --git a/toolkit/mozapps/installer/windows/nsis/common.nsh b/toolkit/mozapps/installer/windows/nsis/common.nsh
+--- a/toolkit/mozapps/installer/windows/nsis/common.nsh
++++ b/toolkit/mozapps/installer/windows/nsis/common.nsh
+@@ -5374,18 +5374,18 @@
+       ; SSE2 instruction set is available.
+       System::Call "kernel32::IsProcessorFeaturePresent(i 10)i .R8"
+       ${If} "$R8" == "0"
+         MessageBox MB_OK|MB_ICONSTOP "$R9"
+         ; Nothing initialized so no need to call OnEndCommon
+         Quit
+       ${EndIf}
+ 
+-      ; Windows NT 6.0 (Vista/Server 2008) and lower are not supported.
+-      ${Unless} ${AtLeastWin7}
++      ; Windows 8.1/Server 2012 R2 and lower are not supported.
++      ${Unless} ${AtLeastWin10}
+         MessageBox MB_OK|MB_ICONSTOP "$R9"
+         ; Nothing initialized so no need to call OnEndCommon
+         Quit
+       ${EndUnless}
+ 
+       !ifdef HAVE_64BIT_BUILD
+         SetRegView 64
+       !endif
+
